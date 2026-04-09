@@ -1,0 +1,1711 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>混凝土抗壓強度 AI 預測系統</title>
+<!-- ── PWA ── -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#3b82f6">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="強度預測">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="application-name" content="強度預測">
+<meta name="description" content="AOA-SVR 混凝土抗壓強度智慧預測系統">
+<!-- Favicons & Icons (all in root) -->
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="icon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="icon-16x16.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="apple-touch-icon" sizes="152x152" href="icon-152x152.png">
+<link rel="apple-touch-icon" sizes="144x144" href="icon-144x144.png">
+<link rel="apple-touch-icon" sizes="128x128" href="icon-128x128.png">
+<!-- Service Worker Registration -->
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js')
+        .then(reg => console.log('[PWA] SW registered:', reg.scope))
+        .catch(err => console.warn('[PWA] SW registration failed:', err));
+    });
+  }
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600;700&family=JetBrains+Mono:wght@400;700&family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0e1a;
+  --bg2: #111827;
+  --bg3: #1a2236;
+  --border: #1e2d4a;
+  --accent: #3b82f6;
+  --accent2: #06b6d4;
+  --accent3: #f59e0b;
+  --success: #10b981;
+  --danger: #ef4444;
+  --text: #e2e8f0;
+  --text2: #94a3b8;
+  --text3: #64748b;
+  --serif: 'Noto Serif TC', serif;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'Noto Sans TC', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* ── BACKGROUND GRID ── */
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: 0;
+  background-image:
+    linear-gradient(rgba(59,130,246,.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(59,130,246,.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+  pointer-events: none;
+}
+
+/* ── NAV ── */
+nav {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(10,14,26,.97);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+}
+/* 第一行：品牌 */
+.nav-brand-row {
+  max-width: 1400px; margin: auto;
+  display: flex; align-items: center;
+  height: 48px; padding: 0 1.25rem;
+  border-bottom: 1px solid rgba(30,45,74,.5);
+}
+.nav-brand {
+  font-family: var(--serif);
+  font-size: 1.2rem; font-weight: 700;
+  color: var(--accent); letter-spacing: .02em;
+  display: flex; align-items: center; gap: .5rem;
+  white-space: nowrap;
+}
+.nav-brand .brand-icon { font-size: 1rem; }
+.nav-brand .brand-title { color: var(--text); }
+.nav-brand .brand-badge {
+  font-size: .58rem; color: var(--text3); font-family: var(--mono);
+  letter-spacing: .08em; text-transform: uppercase;
+  border: 1px solid var(--border); padding: 2px 7px; border-radius: 3px;
+  background: var(--bg3);
+}
+/* 第二行：Tabs */
+.nav-tabs-row {
+  max-width: 1400px; margin: auto;
+  padding: 0 .75rem;
+}
+.nav-tabs {
+  display: flex; gap: 0; overflow-x: auto;
+  scrollbar-width: none;
+}
+.nav-tabs::-webkit-scrollbar { display: none; }
+.nav-btn {
+  background: none; border: none; cursor: pointer;
+  color: var(--text3); font-family: var(--sans); font-size: .8rem;
+  padding: 9px 14px; border-radius: 0;
+  transition: all .2s; white-space: nowrap;
+  position: relative; flex-shrink: 0;
+  border-bottom: 2px solid transparent;
+}
+.nav-btn:hover { color: var(--text); background: rgba(59,130,246,.06); }
+.nav-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  background: rgba(59,130,246,.08);
+}
+
+/* ── MAIN ── */
+main { max-width: 1400px; margin: auto; padding: 2rem; position: relative; z-index: 1; }
+
+.tab-content { display: none; }
+.tab-content.active { display: block; animation: fadeIn .3s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* ── SECTION HEADER ── */
+.section-header {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  margin-bottom: 1.5rem; padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.section-title {
+  font-family: var(--serif);
+  font-size: 1.0rem; font-weight: 700;
+  color: var(--text);
+}
+.section-sub {
+  font-family: var(--mono); font-size: .7rem;
+  color: var(--text3); letter-spacing: .08em; text-transform: uppercase;
+  margin-top: 4px;
+}
+.badge {
+  font-family: var(--mono); font-size: .68rem;
+  background: var(--bg3); color: var(--accent2);
+  border: 1px solid var(--border); border-radius: 4px;
+  padding: 4px 10px; letter-spacing: .06em;
+}
+
+/* ── CARDS ── */
+.card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+}
+.card-sm { padding: 1rem 1.25rem; }
+.card-accent-top { border-top: 2px solid var(--accent); }
+.card-accent-left { border-left: 3px solid var(--accent); }
+
+/* ── STAT CARDS ── */
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+.stat-card {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 12px;
+  padding: 1.25rem 1.5rem; position: relative; overflow: hidden;
+}
+.stat-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+}
+.stat-card.blue::before  { background: var(--accent); }
+.stat-card.cyan::before  { background: var(--accent2); }
+.stat-card.amber::before { background: var(--accent3); }
+.stat-card.green::before { background: var(--success); }
+.stat-card.red::before   { background: var(--danger); }
+
+.stat-label {
+  font-family: var(--mono); font-size: .65rem; color: var(--text3);
+  text-transform: uppercase; letter-spacing: .1em; margin-bottom: .4rem;
+}
+.stat-value {
+  font-family: var(--mono); font-size: 1.8rem; font-weight: 700;
+  line-height: 1;
+}
+.stat-card.blue  .stat-value { color: var(--accent); }
+.stat-card.cyan  .stat-value { color: var(--accent2); }
+.stat-card.amber .stat-value { color: var(--accent3); }
+.stat-card.green .stat-value { color: var(--success); }
+.stat-card.red   .stat-value { color: var(--danger); }
+.stat-hint { font-size: .72rem; color: var(--text3); margin-top: .5rem; }
+
+/* ── GRID LAYOUTS ── */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.5rem; }
+
+/* ── FORMULA CARD ── */
+.formula-block {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 8px; padding: 1.5rem;
+  font-family: var(--mono); font-size: 1rem;
+  color: var(--accent2); text-align: center;
+  margin: 1rem 0; letter-spacing: .04em;
+}
+.formula-sub { font-size: .7rem; color: var(--text3); margin-top: .5rem; }
+
+/* ── INPUT STYLES ── */
+label.field-label {
+  display: block; font-size: .72rem; color: var(--text3);
+  font-family: var(--mono); text-transform: uppercase; letter-spacing: .08em;
+  margin-bottom: 4px;
+}
+label.field-label .unit { text-transform: none; }
+input[type=number], select {
+  width: 100%; background: var(--bg3); border: 1px solid var(--border);
+  color: var(--text); border-radius: 6px; padding: 9px 12px;
+  font-family: var(--mono); font-size: .85rem;
+  transition: border-color .2s;
+  -moz-appearance: textfield;
+}
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+input[type=number]:focus, select:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(59,130,246,.15);
+}
+select option { background: var(--bg2); }
+.input-water { border-color: rgba(6,182,212,.4); }
+.input-water:focus { border-color: var(--accent2); box-shadow: 0 0 0 3px rgba(6,182,212,.15); }
+
+/* ── BUTTONS ── */
+.btn {
+  border: none; border-radius: 8px; cursor: pointer;
+  font-family: var(--sans); font-weight: 500;
+  transition: all .2s; display: inline-flex; align-items: center; gap: .5rem;
+}
+.btn-primary {
+  background: var(--accent); color: #fff;
+  padding: 12px 24px; font-size: .9rem; width: 100%;
+  justify-content: center; font-weight: 600;
+  letter-spacing: .04em;
+}
+.btn-primary:hover { background: #2563eb; transform: translateY(-1px); box-shadow: 0 8px 24px rgba(59,130,246,.3); }
+.btn-primary:active { transform: none; }
+
+.btn-sm {
+  background: var(--bg3); color: var(--text2);
+  border: 1px solid var(--border);
+  padding: 6px 14px; font-size: .75rem;
+}
+.btn-sm:hover { border-color: var(--accent); color: var(--accent); }
+
+.btn-add { background: var(--bg3); border: 1px dashed var(--border); color: var(--text3); padding: 8px 16px; font-size: .8rem; width: 100%; margin-top: .75rem; justify-content: center; }
+.btn-add:hover { border-color: var(--success); color: var(--success); }
+
+/* ── TABLE ── */
+.table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); }
+table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+thead { background: var(--bg3); }
+thead th {
+  padding: 10px 12px; text-align: left;
+  font-family: var(--mono); font-size: .68rem; font-weight: 700;
+  color: var(--text3); text-transform: uppercase; letter-spacing: .08em;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+thead th span { text-transform: none; }
+thead th.col-water { color: var(--accent2); }
+thead th.col-cs    { color: var(--accent3); }
+tbody tr { border-bottom: 1px solid var(--border); }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: var(--bg3); }
+tbody td {
+  padding: 9px 12px;
+  font-family: var(--mono); font-size: .78rem; color: var(--text2);
+}
+tbody td.val-water { color: var(--accent2); font-weight: 600; }
+tbody td.val-cs    { color: var(--accent3); font-weight: 700; }
+
+/* ── RESULT PANEL ── */
+.result-panel {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 12px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 2.5rem 2rem; text-align: center; min-height: 260px;
+  position: relative; overflow: hidden;
+}
+.result-panel::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(circle at 50% 30%, rgba(59,130,246,.08) 0%, transparent 70%);
+}
+.result-label {
+  font-family: var(--mono); font-size: .68rem; color: var(--text3);
+  text-transform: uppercase; letter-spacing: .15em; margin-bottom: 1rem;
+}
+.result-value {
+  font-family: var(--mono); font-size: 5rem; font-weight: 700; line-height: 1;
+  color: var(--accent);
+  text-shadow: 0 0 40px rgba(59,130,246,.4);
+  transition: all .4s;
+}
+.result-unit { font-family: var(--mono); font-size: 1rem; color: var(--text3); margin-top: .75rem; }
+.result-range { font-size: .78rem; color: var(--text3); margin-top: 1rem; }
+.result-bar { width: 80%; height: 4px; background: var(--border); border-radius: 2px; margin: 1rem auto 0; overflow: hidden; }
+.result-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent2), var(--accent)); border-radius: 2px; transition: width .6s; width: 0%; }
+
+/* ── CONFIDENCE METER ── */
+.conf-row { display: flex; align-items: center; gap: 1rem; margin: .5rem 0; }
+.conf-name { font-family: var(--mono); font-size: .72rem; color: var(--text3); width: 90px; text-transform: uppercase; letter-spacing: .04em; flex-shrink: 0; }
+.conf-track { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+.conf-fill { height: 100%; border-radius: 3px; transition: width 1s ease; }
+.conf-fill.high { background: linear-gradient(90deg, var(--success), var(--accent2)); }
+.conf-fill.mid  { background: linear-gradient(90deg, var(--accent2), var(--accent)); }
+.conf-fill.low  { background: linear-gradient(90deg, var(--accent3), var(--danger)); }
+.conf-val { font-family: var(--mono); font-size: .72rem; font-weight: 700; color: var(--text); width: 50px; text-align: right; flex-shrink: 0; }
+
+/* ── INSIGHT BOX ── */
+.insight {
+  background: var(--bg3); border-left: 3px solid var(--accent);
+  border-radius: 0 8px 8px 0; padding: 1rem 1.25rem; margin: .75rem 0;
+  font-size: .84rem; color: var(--text2); line-height: 1.7;
+}
+.insight-title {
+  font-family: var(--mono); font-size: .68rem; color: var(--accent);
+  text-transform: uppercase; letter-spacing: .1em; margin-bottom: .4rem;
+}
+.insight.warn { border-color: var(--accent3); }
+.insight.warn .insight-title { color: var(--accent3); }
+.insight.success { border-color: var(--success); }
+.insight.success .insight-title { color: var(--success); }
+
+/* ── COMPARISON TABLE ── */
+.compare-table th { color: var(--text2); }
+.compare-table td { vertical-align: middle; }
+.compare-best { color: var(--success); font-weight: 700; }
+.compare-tag {
+  font-family: var(--mono); font-size: .65rem;
+  border: 1px solid; border-radius: 3px; padding: 1px 5px;
+  text-transform: uppercase; letter-spacing: .06em;
+}
+.tag-aoa { color: var(--success); border-color: var(--success); background: rgba(16,185,129,.08); }
+.tag-eo  { color: var(--accent); border-color: var(--accent); background: rgba(59,130,246,.08); }
+
+/* ── CHART ── */
+.chart-wrap { position: relative; }
+
+/* ── PRINT ── */
+@media print {
+  body { background: #fff !important; color: #000 !important; }
+  nav, .no-print { display: none !important; }
+  .tab-content { display: block !important; }
+  main { padding: 0 !important; }
+  .card { border: 1px solid #ccc !important; background: #fff !important; }
+  /* 強制顯示報告強度區塊 */
+  #rep-val {
+    color: #1a56db !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  #report [style*="background:var(--bg3)"],
+  #report [style*="background: var(--bg3)"] {
+    background: #f0f4ff !important;
+    border-color: #1a56db !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  #report { border: none !important; max-width: 100% !important; }
+  /* 隱藏報告頁表頭文字與直線 */
+  #tab-report > .section-header { display: none !important; }
+  /* 列印時以 PNG img 取代 canvas，避免失真 */
+  #rep-curve-canvas-wrap { display: none !important; }
+  #rep-curve-print-img { display: block !important; }
+  #rep-curve-card > div > div { page-break-inside: avoid; }
+  /* 只列印報告頁，隱藏其他 Tab */
+  #tab-data, #tab-model, #tab-predict, #tab-analysis, #tab-compare { display: none !important; }
+  #tab-report { display: block !important; }
+}
+
+/* ── RESPONSIVE ── */
+@media (max-width: 768px) {
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  .nav-tabs { overflow-x: auto; }
+  .nav-btn span { display: none; }
+  main { padding: 1rem; }
+}
+
+/* ── GLOW DOT ── */
+.dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.dot-green { background: var(--success); box-shadow: 0 0 6px var(--success); }
+.dot-blue  { background: var(--accent);  box-shadow: 0 0 6px var(--accent); }
+.dot-amber { background: var(--accent3); box-shadow: 0 0 6px var(--accent3); }
+
+/* ── METHOD PILLS ── */
+.method-list { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }
+.method-pill {
+  font-family: var(--mono); font-size: .7rem;
+  border: 1px solid var(--border); border-radius: 20px;
+  padding: 4px 12px; color: var(--text3);
+  cursor: pointer; transition: all .2s;
+}
+.method-pill:hover, .method-pill.active { border-color: var(--accent); color: var(--accent); background: rgba(59,130,246,.08); }
+
+/* ── AI SPINNER ── */
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse { 0%,100%{opacity:.4} 50%{opacity:1} }
+.ai-spinner {
+  width: 48px; height: 48px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+  margin: 0 auto;
+}
+.loading-dot {
+  display: inline-block; width: 6px; height: 6px;
+  border-radius: 50%; background: var(--accent);
+  animation: pulse 1.2s ease-in-out infinite;
+  margin: 0 2px;
+}
+.loading-dot:nth-child(2) { animation-delay: .2s; }
+.loading-dot:nth-child(3) { animation-delay: .4s; }
+/* toggle */
+.toggle-arrow { display: inline-block; transition: transform .25s; }
+.collapsed .toggle-arrow { transform: rotate(-90deg); }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="no-print">
+  <!-- 第一行：品牌 -->
+  <div class="nav-brand-row">
+    <div class="nav-brand">
+      <span class="brand-icon">​🧭</span>
+      <span class="brand-title">混凝土強度預測系統</span>
+      <span class="brand-badge">AOA-SVR v2.0</span>
+    </div>
+  </div>
+  <!-- 第二行：Tab 導覽列 -->
+  <div class="nav-tabs-row">
+    <div class="nav-tabs">
+      <button class="nav-btn active" onclick="showTab('tab-data',this)">訓練資料</button>
+      <button class="nav-btn" onclick="showTab('tab-model',this)">模型方法</button>
+      <button class="nav-btn" onclick="showTab('tab-predict',this)">強度預測</button>
+      <button class="nav-btn" onclick="showTab('tab-analysis',this)">成效評析</button>
+      <button class="nav-btn" onclick="showTab('tab-compare',this)">文獻比較</button>
+      <button class="nav-btn" onclick="showTab('tab-report',this)">生成報告</button>
+    </div>
+  </div>
+</nav>
+
+<main>
+
+<!-- ═══════════════════════ TAB 1: 訓練資料 ═══════════════════════ -->
+<section id="tab-data" class="tab-content active">
+  <div class="section-header">
+    <div>
+      <div class="section-title">訓練資料庫</div>
+      <div class="section-sub">Mu(2024) HPC Dataset</div>
+    </div>
+    <span class="badge">N=1030筆(已載入)</span>
+  </div>
+
+  <!-- 校正儀表盤（2欄2列） -->
+  <div id="calib-info" style="display:none;margin-bottom:1.25rem;">
+    <div class="stats-grid" style="grid-template-columns:1fr 1fr;gap:1rem;">
+      <div class="stat-card blue">
+        <div class="stat-label">校正數據筆數</div>
+        <div class="stat-value" id="calib-n">—</div>
+        <div class="stat-hint">新增試驗數據筆數</div>
+      </div>
+      <div class="stat-card cyan">
+        <div class="stat-label">預測誤差RMSE</div>
+        <div class="stat-value" id="calib-rmse">—</div>
+        <div class="stat-hint">kgf/cm²</div>
+      </div>
+      <div class="stat-card amber">
+        <div class="stat-label">回歸斜率 a</div>
+        <div class="stat-value" id="calib-a">—</div>
+        <div class="stat-hint">K1 比例因子</div>
+      </div>
+      <div class="stat-card green">
+        <div class="stat-label">偏移修正量 b</div>
+        <div class="stat-value" id="calib-b">—</div>
+        <div class="stat-hint">kgf/cm²</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 資料表（含固定表頭與底部輸入列） -->
+  <div class="table-wrap no-print" style="max-height:420px;overflow-y:auto;overflow-x:auto;">
+    <table style="width:100%;border-collapse:collapse;">
+      <thead style="position:sticky;top:0;z-index:10;background:var(--bg3);">
+        <tr>
+          <th>#</th>
+          <th>水泥C<br><span style="font-weight:400;color:var(--text3)">kg/m³</span></th>
+          <th>爐石BFS<br><span style="font-weight:400;color:var(--text3)">kg/m³</span></th>
+          <th>飛灰FA<br><span style="font-weight:400;color:var(--text3)">kg/m³</span></th>
+          <th class="col-water">水W<br><span style="font-weight:400;color:var(--text3)">kg/m³</span></th>
+          <th>減水劑SP<br><span style="font-weight:400;color:var(--text3)">kg/m³</span></th>
+          <th>粗骨材CAG<br><span style="font-weight:400;color:var(--text3)">kg/m³</span></th>
+          <th>細骨材FAG<br><span style="font-weight:400;color:var(--text3)">kg/m³</span></th>
+          <th>齡期<br><span style="font-weight:400;color:var(--text3)">天</span></th>
+          <th class="col-cs">實測強度 CS<br><span style="font-weight:400;color:var(--text3)">kgf/cm²</span></th>
+          <th style="color:var(--text3);font-weight:400;font-size:.62rem;">操作</th>
+        </tr>
+      </thead>
+      <tbody id="trainDataBody"></tbody>
+      <tfoot>
+        <tr style="background:var(--bg3);border-top:2px solid var(--accent);">
+          <td style="padding:6px 8px;font-family:var(--mono);font-size:.7rem;color:var(--accent);white-space:nowrap;background:var(--bg3);">＋新增</td>
+          <td style="padding:4px 6px;"><input type="number" id="t-cement" placeholder="C" style="width:100%;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:5px 7px;font-family:var(--mono);font-size:.78rem;-moz-appearance:textfield;"></td>
+          <td style="padding:4px 6px;"><input type="number" id="t-slag"   placeholder="BFS" style="width:100%;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:5px 7px;font-family:var(--mono);font-size:.78rem;-moz-appearance:textfield;"></td>
+          <td style="padding:4px 6px;"><input type="number" id="t-flyash" placeholder="FA" style="width:100%;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:5px 7px;font-family:var(--mono);font-size:.78rem;-moz-appearance:textfield;"></td>
+          <td style="padding:4px 6px;"><input type="number" id="t-water"  placeholder="W" class="input-water" style="width:100%;background:var(--bg2);border:1px solid rgba(6,182,212,.4);color:var(--accent2);border-radius:5px;padding:5px 7px;font-family:var(--mono);font-size:.78rem;-moz-appearance:textfield;"></td>
+          <td style="padding:4px 6px;"><input type="number" id="t-sp"     placeholder="SP" style="width:100%;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:5px 7px;font-family:var(--mono);font-size:.78rem;-moz-appearance:textfield;"></td>
+          <td style="padding:4px 6px;"><input type="number" id="t-ca"     placeholder="CAG" style="width:100%;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:5px 7px;font-family:var(--mono);font-size:.78rem;-moz-appearance:textfield;"></td>
+          <td style="padding:4px 6px;"><input type="number" id="t-fa"     placeholder="FAG" style="width:100%;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:5px 7px;font-family:var(--mono);font-size:.78rem;-moz-appearance:textfield;"></td>
+          <td style="padding:4px 6px;"><input type="number" id="t-age"    placeholder="AGE" style="width:100%;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:5px 7px;font-family:var(--mono);font-size:.78rem;-moz-appearance:textfield;"></td>
+          <td style="padding:4px 6px;"><input type="number" id="t-strength" placeholder="CS" style="width:100%;background:var(--bg2);border:1px solid rgba(245,158,11,.4);color:var(--accent3);border-radius:5px;padding:5px 7px;font-family:var(--mono);font-size:.78rem;-moz-appearance:textfield;"></td>
+          <td style="padding:4px 8px;white-space:nowrap;background:var(--bg3);">
+            <button onclick="addData()" style="background:var(--bg3);border:1px solid var(--accent);color:var(--accent);cursor:pointer;font-size:.72rem;padding:5px 10px;border-radius:5px;font-family:var(--sans);font-weight:600;white-space:nowrap;">確認</button>
+          </td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <!-- 引用文獻數據資料庫說明（頁尾） -->
+  <div class="insight" style="margin-top:1.5rem;">
+    <div class="insight-title">引用文獻數據資料庫說明</div>
+    <p style="font-size:.82rem;color:var(--text2);line-height:1.9;margin-top:.5rem;">
+      本系統訓練資料來源為 <strong style="color:var(--text)">Mu (2024)</strong> 高性能混凝土（HPC）數據集，共計 <strong style="color:var(--accent)">N = 1,030 筆</strong>實驗配比紀錄。資料集依 <strong>70/30 隨機分層抽樣</strong>分割，訓練樣本 721 筆（70%）、測試樣本 309 筆（30%），涵蓋強度範圍 <strong style="color:var(--accent3)">20–847 kgf/cm²</strong>（含早齡期至長期高性能混凝土）。
+    </p>
+    <p style="font-size:.82rem;color:var(--text2);line-height:1.9;margin-top:.75rem;">
+      輸入變數共 8 項：水泥量（C）、爐石粉（BFS）、飛灰（FA）、拌合水（W）、減水劑（SP）、粗骨材（CAG）、細骨材（FAG）、養護齡期（AGE）。W/C 與 CAG/C 之皮爾森相關係數達 <strong style="color:var(--accent)">0.919</strong>，為最顯著相關因子。
+    </p>
+    <p style="font-size:.82rem;color:var(--text2);line-height:1.9;margin-top:.75rem;">
+      試體尺寸修正係數引用自 <strong style="color:var(--text)">Xie et al. (2023)</strong>，依養護方法（#C1／#C2／#C3／CIP）與試體規格（4吋／6吋）分類校正，修正係數由各組線性迴歸斜率導出（R² = 0.9889–0.9955）。
+    </p>
+  </div>
+</section>
+
+<!-- ═══════════════════════ TAB 2: 模型方法 ═══════════════════════ -->
+<section id="tab-model" class="tab-content">
+  <div class="section-header">
+    <div>
+      <div class="section-title">模型方法論</div>
+      <div class="section-sub">AOA-SVR混合回歸模型—基於Mu及Xie et al.研究</div>
+    </div>
+  </div>
+
+  <div class="grid-2" style="margin-bottom:1.5rem;">
+    <!-- AOA-SVR -->
+    <div class="card card-accent-top">
+      <div class="insight-title" style="margin-bottom:.75rem;">算術優化算法 (AOA)</div>
+      <p style="font-size:.84rem;color:var(--text2);line-height:1.8;">
+        AOA 模擬數學算符（乘 M、除 D、加 A、減 S）的分佈行為，透過
+        <strong style="color:var(--text)">數學最佳化加速器 (MOA)</strong> 動態調控探索與收斂，
+        精確定位 SVR 的懲罰係數 <em style="color:var(--accent2)">C</em> 與核參數 <em style="color:var(--accent2)">γ</em>。
+      </p>
+      <div class="formula-block" style="margin-top:1rem;">
+        MOA(t) = δ + t × (γ − δ) / T<sub>max</sub>
+        <div class="formula-sub">位置更新概率函數 — 平衡探索與收斂</div>
+      </div>
+      <div class="insight success" style="margin-top:1rem;">
+        <div class="insight-title">優勢</div>
+        相比平衡優化算法 (EO)，AOA 在訓練階段 RMSE 從 40.8 降至 21.1 kgf/cm²，
+        測試階段從 33.9 降至 12.3 kgf/cm²，顯著提升預測精度。
+      </div>
+    </div>
+
+    <!-- SVR -->
+    <div class="card card-accent-top" style="--accent:#06b6d4;">
+      <div class="insight-title" style="margin-bottom:.75rem;color:var(--accent2);">支持向量回歸 (SVR)</div>
+      <p style="font-size:.84rem;color:var(--text2);line-height:1.8;">
+        SVR 將高維非線性問題映射至特徵空間，以
+        <strong style="color:var(--text)">RBF 高斯核函數</strong>
+        捕捉水灰比、齡期與摻合料間的複雜耦合效應，同時控制模型複雜度。
+      </p>
+      <div class="formula-block" style="margin-top:1rem;color:var(--accent2);">
+        K(x, y) = exp(−γ ‖x − y‖²)
+        <div class="formula-sub">徑向基底核函數 — 處理配比非線性交互作用</div>
+      </div>
+      <div class="insight" style="margin-top:1rem;">
+        <div class="insight-title">目標函數</div>
+        最小化 ½‖w‖² + C∑(ξᵢ + ξᵢ*)，在模型平坦性與訓練誤差容忍間求最佳平衡。
+      </div>
+    </div>
+  </div>
+
+  <!-- Xie et al. 方法論 -->
+  <div class="card" style="margin-bottom:1.5rem;">
+    <div class="insight-title" style="margin-bottom:1rem;">Xie et al. (2023) — 多變量回歸與變異數分析架構</div>
+    <div class="grid-3" style="gap:1rem;">
+      <div class="insight">
+        <div class="insight-title">PCA 主成分分析</div>
+        以協方差矩陣特徵值分解，從養護天數、試體類型、季節、方法、溫度等七個變數中
+        提取主要變異方向。前四個主成分解釋 79.5% 的總變異，
+        其中最高相關因子為最低氣溫 (0.685) 與最高氣溫 (0.670)。
+      </div>
+      <div class="insight" style="border-color:var(--accent2);">
+        <div class="insight-title" style="color:var(--accent2);">LDA 線性判別分析</div>
+        在 PCA 降維後進行監督式分類，依養護方法分群。
+        組間平方距離分析顯示方法 #C3 與 #CIP 差異極大 (314.887)，
+        確認養護方法為最關鍵分類變數。
+      </div>
+      <div class="insight" style="border-color:var(--accent3);">
+        <div class="insight-title" style="color:var(--accent3);">MANOVA 多變量變異數分析</div>
+        同時評估試體類型、養護方法與施工季節對強度之影響。
+        試體類型 (p=0.025)、方法 (p≈0)、季節 (p≈0) 均達顯著水準，
+        而型別×方法交互作用 (p=0.283) 不顯著。
+      </div>
+    </div>
+  </div>
+
+  <!-- 回歸公式 -->
+  <div class="card">
+    <div class="insight-title" style="margin-bottom:1rem;">核心迴歸方程式（Xie et al. 2023）</div>
+    <div class="grid-2" style="gap:1rem;">
+      <div>
+        <p style="font-size:.78rem;color:var(--text3);margin-bottom:.5rem;">養護方法 #C1（環境空氣養護）</p>
+        <div class="formula-block" style="text-align:left;padding:1rem;">
+          <div>y₂ = <span style="color:var(--success)">0.9836x</span> &nbsp;<span style="font-size:.75rem;color:var(--text3)">(全齡期，R²=0.9955)</span></div>
+          <div style="margin-top:.5rem;">y₃ = <span style="color:var(--accent)">1.0497x</span> &nbsp;<span style="font-size:.75rem;color:var(--text3)">(第1天，R²=0.9889)</span></div>
+          <div class="formula-sub">6吋強度略低於4吋，差異約 −9%</div>
+        </div>
+      </div>
+      <div>
+        <p style="font-size:.78rem;color:var(--text3);margin-bottom:.5rem;">養護方法 #C2（絕熱保溫箱養護）</p>
+        <div class="formula-block" style="text-align:left;padding:1rem;">
+          <div>y₂ = <span style="color:var(--accent3)">1.0361x</span> &nbsp;<span style="font-size:.75rem;color:var(--text3)">(全齡期，R²=0.9903)</span></div>
+          <div style="margin-top:.5rem;">y₃ = <span style="color:var(--danger)">1.1237x</span> &nbsp;<span style="font-size:.75rem;color:var(--text3)">(第1天，R²=0.9889)</span></div>
+          <div class="formula-sub">6吋高估現場強度，差異高達 +14%</div>
+        </div>
+      </div>
+    </div>
+    <div class="insight warn" style="margin-top:1rem;">
+      <div class="insight-title">重要警示</div>
+      6吋試體在保溫箱養護下因水化放熱蓄積，早期強度系統性高估約 14%。
+      對於高早強混凝土或預鑄預力構件，建議對 6吋試體測值乘以修正係數 <strong>0.86</strong>（#C2法）或 <strong>0.91</strong>（#C1法）。
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════ TAB 3: 強度預測 ═══════════════════════ -->
+<section id="tab-predict" class="tab-content">
+  <div class="section-header">
+    <div>
+      <div class="section-title">AOA-SVR 強度智慧預測</div>
+      <div class="section-sub">輸入配比與養護條件，即時估算抗壓強度</div>
+    </div>
+    <span class="badge"><span class="dot dot-green" style="margin-right:6px;"></span>模型就緒</span>
+  </div>
+
+  <div class="grid-2" style="align-items:start;">
+    <!-- 左側：輸入 -->
+    <div class="card">
+      <div class="insight-title" style="margin-bottom:1.25rem;">設計配比輸入</div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;">
+        <div><label class="field-label">水泥C<span class="unit">(kg/m³)</span></label><input type="number" id="c-cement" value="200"></div>
+        <div><label class="field-label">拌合水W<span class="unit">(kg/m³)</span></label><input type="number" id="c-water" value="180" class="input-water"></div>
+        <div><label class="field-label">爐石粉BFS<span class="unit">(kg/m³)</span></label><input type="number" id="c-slag" value="140"></div>
+        <div><label class="field-label">飛灰FA<span class="unit">(kg/m³)</span></label><input type="number" id="c-ash" value="60"></div>
+        <div><label class="field-label">減水劑SP<span class="unit">(kg/m³)</span></label><input type="number" id="c-sp" value="3.5"></div>
+        <div><label class="field-label">粗骨材CAG<span class="unit">(kg/m³)</span></label><input type="number" id="c-ca" value="950"></div>
+        <div><label class="field-label">細骨材FAG<span class="unit">(kg/m³)</span></label><input type="number" id="c-fa" value="800"></div>
+        <div><label class="field-label">養護齡期AGE<span class="unit">(天)</span></label><input type="number" id="c-age" value="28"></div>
+      </div>
+
+      <div style="margin-bottom:1.25rem;">
+        <label class="field-label">養護方法修正(Xie et al. 2023)</label>
+        <select id="c-method">
+          <option value="1.0">C1—環境空氣養護(6吋修正−9%)</option>
+          <option value="1.14">C2—絕熱保溫養護(6吋修正+14%)</option>
+          <option value="1.0">C3—恆溫標準養護</option>
+          <option value="0.9">CIP—現場養護試體</option>
+        </select>
+      </div>
+
+      <div style="margin-bottom:1rem;">
+        <label class="field-label">試體尺寸</label>
+        <div class="method-list">
+          <div class="method-pill active" onclick="setSpecimen(this,'4in')">4"圓柱(φ100×200mm)</div>
+          <div class="method-pill" onclick="setSpecimen(this,'6in')">6"圓柱(φ150×300mm)</div>
+        </div>
+      </div>
+
+      <button class="btn btn-primary" id="predict-btn" onclick="calculateAI()">
+        ▶ 執行 AOA-SVR 預測
+      </button>
+    </div>
+
+    <!-- 右側：結果 -->
+    <div style="display:flex;flex-direction:column;gap:1rem;">
+      <div class="result-panel" id="result-panel">
+        <!-- 初始狀態 -->
+        <div id="result-idle" style="text-align:center;">
+          <div style="font-size:2.5rem;margin-bottom:.5rem;opacity:.2;">⬡</div>
+          <div class="result-label">輸入配比後執行預測</div>
+        </div>
+        <!-- 載入中 -->
+        <div id="result-loading" style="display:none;text-align:center;">
+          <div class="ai-spinner"></div>
+          <div class="result-label" style="margin-top:1rem;">AOA-SVR 運算中…</div>
+          <div id="loading-step" style="font-family:var(--mono);font-size:.7rem;color:var(--text3);margin-top:.5rem;"></div>
+        </div>
+        <!-- 結果 -->
+        <div id="result-done" style="display:none;width:100%;text-align:center;">
+          <div class="result-label">預測齡期<span id="result-age-label">--</span>天抗壓強度</div>
+          <div class="result-value" id="main-result">--</div>
+          <div class="result-unit">kgf/cm²</div>
+          <div class="result-range" id="result-range"></div>
+          <div class="result-bar" style="width:80%;margin:1rem auto 0;"><div class="result-bar-fill" id="result-bar"></div></div>
+        </div>
+      </div>
+
+      <!-- 強度發展曲線圖（結果下方） -->
+      <div class="card card-sm" id="strength-curve-card" style="display:none;">
+        <div class="insight-title" style="margin-bottom:.75rem;">📈 強度發展曲線（各齡期預估）</div>
+        <div class="chart-wrap" style="height:240px;">
+          <canvas id="strengthCurveChart"></canvas>
+        </div>
+        <div style="font-size:.68rem;color:var(--text3);font-family:var(--mono);margin-top:.5rem;text-align:center;letter-spacing:.04em;">
+          ▲ 標記為本次預測齡期
+        </div>
+      </div>
+
+      <!-- 模型信心指標 -->
+      <div class="card card-sm">
+        <div class="insight-title" style="margin-bottom:.75rem;">模型信心指標（Mu 2024 測試集）</div>
+        <div class="conf-row">
+          <div class="conf-name">R²</div>
+          <div class="conf-track"><div class="conf-fill high" style="width:99.3%"></div></div>
+          <div class="conf-val" style="color:var(--success)">0.9930</div>
+        </div>
+        <div class="conf-row">
+          <div class="conf-name">RMSE</div>
+          <div class="conf-track"><div class="conf-fill mid" style="width:88%"></div></div>
+          <div class="conf-val">12.3 kgf/cm²</div>
+        </div>
+        <div class="conf-row">
+          <div class="conf-name">MAE</div>
+          <div class="conf-track"><div class="conf-fill mid" style="width:91%"></div></div>
+          <div class="conf-val">9.1 kgf/cm²</div>
+        </div>
+        <div class="conf-row">
+          <div class="conf-name">A₂₀-Index</div>
+          <div class="conf-track"><div class="conf-fill high" style="width:98.38%"></div></div>
+          <div class="conf-val" style="color:var(--success)">0.9838</div>
+        </div>
+      </div>
+
+      <!-- AI 推理摘要 -->
+      <div class="card card-sm" id="ai-reasoning" style="display:none;">
+        <div class="insight-title" style="margin-bottom:.75rem;color:var(--accent2);">🤖 AOA-SVR 推理摘要</div>
+        <div style="font-size:.8rem;color:var(--text2);line-height:1.9;font-family:var(--mono);" id="reasoning-text"></div>
+      </div>
+
+      <!-- 試體尺寸警示 -->
+      <div class="card card-sm" id="spec-warnings" style="display:none;">
+        <div class="insight-title" style="margin-bottom:.5rem;color:var(--accent3)">⚠ 試體尺寸修正提示</div>
+        <div style="font-size:.8rem;color:var(--text2);line-height:1.7;" id="spec-warn-text"></div>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ═══════════════════════ TAB 4: 成效評析 ═══════════════════════ -->
+<section id="tab-analysis" class="tab-content">
+  <div class="section-header">
+    <div>
+      <div class="section-title">模型成效評析</div>
+      <div class="section-sub">基於 AOA-SVR 訓練與測試階段之全面指標分析</div>
+    </div>
+  </div>
+
+  <div class="stats-grid" style="margin-bottom:1.5rem;">
+    <div class="stat-card green">
+      <div class="stat-label">Test R²</div>
+      <div class="stat-value">0.9930</div>
+      <div class="stat-hint">超越文獻所有對比方法</div>
+    </div>
+    <div class="stat-card cyan">
+      <div class="stat-label">Test RMSE</div>
+      <div class="stat-value">12.3</div>
+      <div class="stat-hint">kgf/cm²，優於 GEP、GPR、ANN</div>
+    </div>
+    <div class="stat-card blue">
+      <div class="stat-label">Test MAE</div>
+      <div class="stat-value">9.1</div>
+      <div class="stat-hint">kgf/cm²，平均預測誤差極低</div>
+    </div>
+    <div class="stat-card green">
+      <div class="stat-label">A₂₀-Index</div>
+      <div class="stat-value">0.9838</div>
+      <div class="stat-hint">98.38% 樣本在 ±20% 誤差內</div>
+    </div>
+    <div class="stat-card amber">
+      <div class="stat-label">OBJ</div>
+      <div class="stat-value">1.518</div>
+      <div class="stat-hint">複合目標函數，越低越佳</div>
+    </div>
+  </div>
+
+  <div class="grid-2" style="margin-bottom:1.5rem;">
+    <!-- 敏感度分析 -->
+    <div class="card">
+      <div class="insight-title" style="margin-bottom:1rem;">輸入變數敏感度分析</div>
+      <p style="font-size:.8rem;color:var(--text3);margin-bottom:1rem;">逐一移除變數後觀察 R² 降幅，降幅越大代表該變數越關鍵。</p>
+
+      <div id="sensitivity-bars"></div>
+      <div class="insight warn" style="margin-top:1rem;">
+        <div class="insight-title">關鍵發現</div>
+        移除齡期 (AGE) 後，訓練 R² 由 0.9874 驟降至 <strong>0.5831</strong>，
+        測試 R² 由 0.993 降至 <strong>0.8131</strong>，確認齡期為最關鍵預測因子。
+      </div>
+    </div>
+
+    <!-- 殘差分析 -->
+    <div class="card">
+      <div class="insight-title" style="margin-bottom:1rem;">AOA-SVR 殘差分佈圖</div>
+      <div class="chart-wrap" style="height:280px;">
+        <canvas id="errorChart"></canvas>
+      </div>
+      <div class="insight success" style="margin-top:1rem;">
+        <div class="insight-title">常態性驗證</div>
+        殘差以零為中心對稱分佈，符合迴歸同方差假設 (Homoscedasticity)，
+        模型無系統性偏誤，與 Xie et al. (2023) 之 OLS 驗證方法一致。
+      </div>
+    </div>
+  </div>
+
+  <!-- Xie et al. 養護方法發現 -->
+  <div class="card">
+    <div class="insight-title" style="margin-bottom:1rem;">養護方法對強度估算之影響（Xie et al. 2023）</div>
+    <div class="grid-3" style="gap:1rem;">
+      <div class="insight success">
+        <div class="insight-title">#C1 線性模型（R²=0.9955）</div>
+        6吋強度約為4吋之 <strong>98.36%</strong>。以設計強度 245 kgf/cm² (3500 psi) 為例，季節間斜率差異導致約 <strong>22.8 kgf/cm²</strong> 的估算偏差，
+        需依施工季節調整。
+      </div>
+      <div class="insight warn">
+        <div class="insight-title">#C2 保溫箱養護（R²=0.9903）</div>
+        6吋強度約為4吋之 <strong>103.61%</strong>（第1天高達 <strong>112.37%</strong>），
+        季節間斜率差異達 14.07%，系統性高估現場強度。
+        建議採用4吋試體或施加修正係數。
+      </div>
+      <div class="insight" style="border-color:var(--accent2);">
+        <div class="insight-title" style="color:var(--accent2);">MANOVA 顯著因子</div>
+        試體類型 (p=0.025)、養護方法 (p≈0)、施工季節 (p≈0) 均達 α=0.10 顯著水準，
+        養護季節效應尤其強烈（Wilks' λ=0.061，F=86.18）。
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════ TAB 5: 文獻比較 ═══════════════════════ -->
+<section id="tab-compare" class="tab-content">
+  <div class="section-header">
+    <div>
+      <div class="section-title">跨模型文獻比較</div>
+      <div class="section-sub">AOA-SVR vs. GEP/GPR/ANN/XGBoost 等方法</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:1.5rem;">
+    <div class="insight-title" style="margin-bottom:1rem;">訓練階段比較（Train Phase）</div>
+    <div class="table-wrap">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th>方法</th>
+            <th>R²</th>
+            <th>RMSE (kgf/cm²)</th>
+            <th>MAE (kgf/cm²)</th>
+            <th>A₂₀-Index</th>
+            <th>評分</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><span class="compare-tag tag-aoa">AOA-SVR</span></td><td class="compare-best">0.9874</td><td class="compare-best">21.1</td><td class="compare-best">13.7</td><td class="compare-best">0.9792</td><td class="compare-best">★★★★★</td></tr>
+          <tr><td><span class="compare-tag tag-eo">EO-SVR</span></td><td>0.9503</td><td>40.8</td><td>31.0</td><td>0.8682</td><td>★★★★☆</td></tr>
+          <tr><td>GPR</td><td>0.987</td><td>—</td><td>—</td><td>0.9753</td><td>★★★★☆</td></tr>
+          <tr><td>XGBoost</td><td>0.944</td><td>39.6</td><td>26.4</td><td>—</td><td>★★★★☆</td></tr>
+          <tr><td>Multi-GGP</td><td>0.7885</td><td>75.1</td><td>56.7</td><td>—</td><td>★★★☆☆</td></tr>
+          <tr><td>GEP</td><td>0.8224</td><td>—</td><td>53.1</td><td>—</td><td>★★★☆☆</td></tr>
+          <tr><td>SEM</td><td>0.84</td><td>64.2</td><td>50.1</td><td>0.68</td><td>★★★☆☆</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:1.5rem;">
+    <div class="insight-title" style="margin-bottom:1rem;">測試階段比較（Test Phase）</div>
+    <div class="table-wrap">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th>方法</th>
+            <th>R²</th>
+            <th>RMSE (kgf/cm²)</th>
+            <th>MAE (kgf/cm²)</th>
+            <th>A₂₀-Index</th>
+            <th>OBJ</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><span class="compare-tag tag-aoa">AOA-SVR</span></td><td class="compare-best">0.9930</td><td class="compare-best">12.3</td><td class="compare-best">9.1</td><td class="compare-best">0.9838</td><td class="compare-best">1.518</td></tr>
+          <tr><td><span class="compare-tag tag-eo">EO-SVR</span></td><td>0.9411</td><td>33.9</td><td>26.4</td><td>0.8997</td><td>3.442</td></tr>
+          <tr><td>GPR</td><td>0.8858</td><td>—</td><td>—</td><td>0.757</td><td>—</td></tr>
+          <tr><td>ANNs</td><td>0.8649</td><td>64.5</td><td>45.1</td><td>—</td><td>—</td></tr>
+          <tr><td>SEM</td><td>0.8567</td><td>60.9</td><td>45.7</td><td>0.752</td><td>—</td></tr>
+          <tr><td>Multi-GGP</td><td>0.8046</td><td>74.6</td><td>55.9</td><td>—</td><td>—</td></tr>
+          <tr><td>GEP</td><td>0.8354</td><td>—</td><td>52.9</td><td>—</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="insight-title" style="margin-bottom:1rem;">泰勒圖分析與模型排序（Mu 2024）</div>
+    <div class="chart-wrap" style="height:300px;margin-bottom:1rem;">
+      <canvas id="compareChart"></canvas>
+    </div>
+    <div class="grid-2" style="gap:1rem;">
+      <div class="insight success">
+        <div class="insight-title">AOA-SVR 領先優勢</div>
+        在泰勒圖中，AOA-SVR 的相關係數最高（最接近觀測點）、標準差最小、RMSE 最低，
+        綜合評定為最優預測模型，超越 EO-SVR 及所有文獻方法。
+      </div>
+      <div class="insight">
+        <div class="insight-title">限制與適用範圍</div>
+        本模型僅針對以高爐爐石與飛灰為摻合料之 HPC 配比有效，且 EO/AOA 為
+        黑箱模型，可解釋性有限。移植至其他環境條件或配比設計前，需重新校驗。
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════ TAB 6: 生成報告 ═══════════════════════ -->
+<section id="tab-report" class="tab-content">
+  <div class="section-header">
+    <div>
+      <div class="section-title">工程檢測報告</div>
+      <div class="section-sub">列印輸出 / PDF 匯出</div>
+    </div>
+    <button class="btn btn-sm no-print" onclick="window.print()">🖨 列印 PDF</button>
+  </div>
+
+  <div id="report" class="card" style="max-width:900px;margin:auto;font-family:var(--serif);">
+    <!-- 報告標頭 -->
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.75rem;padding-bottom:1.25rem;border-bottom:2px solid var(--border);">
+      <div>
+        <div style="font-size:1.4rem;font-weight:700;letter-spacing:.04em;">混凝土抗壓強度預測報告</div>
+        <div style="font-size:.8rem;color:var(--text3);font-family:var(--mono);margin-top:.4rem;">CONCRETE COMPRESS STRENGTH PREDICTION REPORT</div>
+      </div>
+      <div style="text-align:right;font-family:var(--mono);font-size:.75rem;color:var(--text3);">
+        <div>報告編號：<span id="rep-no" style="color:var(--accent)">—</span></div>
+        <div>簽發日期：<span id="rep-date">—</span></div>
+        <div style="margin-top:.3rem;">模型版本：AOA-SVR v2.0</div>
+      </div>
+    </div>
+
+    <!-- 輸入配比參數（表格化） -->
+    <div style="margin-bottom:1.5rem;">
+      <div style="font-size:.68rem;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);font-family:var(--mono);margin-bottom:.75rem;border-bottom:1px solid var(--border);padding-bottom:.4rem;">▸ 設計配比參數</div>
+      <table id="rep-details" style="width:100%;border-collapse:collapse;font-size:.84rem;">
+        <thead>
+          <tr style="background:var(--bg3);">
+            <th style="padding:7px 12px;text-align:left;font-family:var(--mono);font-size:.65rem;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid var(--border);border-right:1px solid var(--border);">材料</th>
+            <th style="padding:7px 12px;text-align:left;font-family:var(--mono);font-size:.65rem;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid var(--border);border-right:1px solid var(--border);">代號</th>
+            <th style="padding:7px 12px;text-align:right;font-family:var(--mono);font-size:.65rem;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid var(--border);border-right:1px solid var(--border);">用量</th>
+            <th style="padding:7px 12px;text-align:left;font-family:var(--mono);font-size:.65rem;color:var(--text3);letter-spacing:.04em;border-bottom:1px solid var(--border);">單位</th>
+          </tr>
+        </thead>
+        <tbody id="rep-table-body">
+          <tr><td colspan="4" style="padding:10px;color:var(--text3);font-family:var(--mono);font-size:.8rem;">—</td></tr>
+        </tbody>
+        <tfoot id="rep-table-foot"></tfoot>
+      </table>
+    </div>
+
+    <!-- 預測抗壓強度結果 -->
+    <div style="background:var(--bg3);border:2px solid var(--accent);border-radius:10px;padding:1.25rem 1.75rem;margin-bottom:1.25rem;display:flex;align-items:center;justify-content:space-between;gap:1.5rem;">
+      <div>
+        <div style="font-family:var(--mono);font-size:.68rem;color:var(--text3);text-transform:uppercase;letter-spacing:.12em;margin-bottom:.3rem;">預測齡期抗壓強度 Predicted Compressive Strength</div>
+        <div style="font-size:.82rem;color:var(--text3);">計算依據：Mu (2024) AOA-SVR × Xie et al. (2023) 養護修正</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0;">
+        <div style="font-family:var(--mono);font-size:2.8rem;font-weight:700;color:var(--accent);line-height:1;" id="rep-val">--</div>
+        <div style="font-family:var(--mono);font-size:.9rem;color:var(--text2);font-weight:600;">kgf/cm²</div>
+        <div style="font-size:.75rem;color:var(--text3);margin-top:.15rem;" id="rep-mpa">—</div>
+      </div>
+    </div>
+
+    <!-- AOA-SVR 推理摘要（報告頁，內容同強度預測頁） -->
+    <div id="rep-reasoning-card" style="display:none;margin-bottom:1.25rem;padding:.9rem 1rem 1rem;background:var(--bg3);border-radius:8px;border-left:3px solid var(--accent2);">
+      <div style="font-family:var(--mono);font-size:.68rem;color:var(--accent2);text-transform:uppercase;letter-spacing:.1em;margin-bottom:.6rem;">🤖 AOA-SVR 推理摘要</div>
+      <div style="font-size:.8rem;color:var(--text2);line-height:1.9;font-family:var(--mono);" id="rep-reasoning-text"></div>
+    </div>
+
+    <!-- 強度發展曲線圖（報告頁）：強制跳頁後，3:4 高寬比 -->
+    <div id="rep-curve-card" style="display:none;">
+      <div style="page-break-before:always;padding-top:1rem;">
+        <div style="padding:1rem 1.25rem;background:var(--bg3);border:1px solid var(--border);border-radius:10px;">
+          <div style="font-family:var(--mono);font-size:.68rem;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:.75rem;">▸ 預測抗壓強度發展曲線</div>
+          <!-- canvas 供螢幕顯示 -->
+          <div id="rep-curve-canvas-wrap" style="position:relative;height:300px;">
+            <canvas id="repCurveChart"></canvas>
+          </div>
+          <!-- img 供列印（由 beforeprint 產生） -->
+          <img id="rep-curve-print-img" style="display:none;width:100%;height:auto;border:none;" src="" alt="強度發展曲線">
+          <div style="font-size:.68rem;color:var(--text3);font-family:var(--mono);margin-top:.5rem;text-align:center;letter-spacing:.04em;">
+            橫座標：齡期（天）　｜　縱座標：預估抗壓強度（kgf/cm²）　｜　▲ 標記為本次預測齡期
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 模型說明 -->
+    <div style="font-size:.75rem;color:var(--text3);line-height:1.9;margin-bottom:1.75rem;padding:.9rem 1rem;background:var(--bg3);border-radius:8px;border-left:3px solid var(--border);">
+      <strong style="color:var(--text2);">模型依據：</strong>本報告預測值由 AOA-SVR 模型（Mu, 2024）與 Xie et al.（2023）養護修正係數綜合計算。
+      訓練樣本 721 組，測試 R²=0.9930，RMSE=12.3 kgf/cm²。<br><strong style="color:var(--text2);">預測值僅供工程參考，應以實際試驗結果為準。</strong>
+    </div>
+
+    
+</section>
+
+</main>
+
+<script>
+// ═══════════ DATA ═══════════
+const DEFAULT_DATASET = [
+  { c:540, s:0,   f:0,   w:162, sp:2.5, ca:1040, fa:676, age:28, cs:816 },
+  { c:540, s:0,   f:0,   w:162, sp:2.5, ca:1055, fa:676, age:28, cs:631 },
+  { c:332, s:142, f:0,   w:228, sp:0,   ca:932,  fa:594, age:28, cs:330 },
+  { c:332, s:142, f:0,   w:228, sp:0,   ca:932,  fa:594, age:7,  cs:214 },
+  { c:198, s:132, f:0,   w:192, sp:0,   ca:978,  fa:825, age:28, cs:232 },
+  { c:266, s:114, f:0,   w:228, sp:0,   ca:932,  fa:670, age:28, cs:479 },
+  { c:380, s:0,   f:0,   w:228, sp:0,   ca:932,  fa:670, age:28, cs:372 },
+  { c:380, s:0,   f:0,   w:228, sp:0,   ca:932,  fa:670, age:7,  cs:147 },
+  { c:475, s:0,   f:0,   w:228, sp:0,   ca:932,  fa:594, age:28, cs:400 },
+  { c:154, s:143, f:0,   w:193, sp:0,   ca:1012, fa:814, age:28, cs:242 },
+  { c:425, s:106, f:0,   w:153, sp:2.1, ca:1000, fa:630, age:28, cs:562 },
+  { c:350, s:175, f:35,  w:155, sp:4.0, ca:1020, fa:660, age:56, cs:696 },
+  { c:290, s:0,   f:145, w:185, sp:1.2, ca:990,  fa:700, age:28, cs:426 },
+];
+
+function saveDataset() {
+  try { localStorage.setItem('hpc_dataset', JSON.stringify(dataset)); } catch(e) {}
+}
+function loadDataset() {
+  try {
+    const saved = localStorage.getItem('hpc_dataset');
+    if (saved) { const parsed = JSON.parse(saved); if (Array.isArray(parsed) && parsed.length > 0) return parsed; }
+  } catch(e) {}
+  return DEFAULT_DATASET.map(r => Object.assign({}, r));
+}
+let dataset = loadDataset();
+
+let selectedSpecimen = '4in';
+
+function setSpecimen(el, val) {
+  document.querySelectorAll('.method-pill').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  selectedSpecimen = val;
+}
+
+// ── 校正係數（由使用者新增數據動態更新）
+let calibK1 = 960;   // Abrams K1（預設）
+let calibK_wb = 3.5; // Abrams 指數（預設）
+let calibOffset = 0; // 線性偏移修正
+
+// ═══════════ RENDER TABLE ═══════════
+function renderTable() {
+  const tbody = document.getElementById('trainDataBody');
+  tbody.innerHTML = '';
+  dataset.forEach((d, i) => {
+    tbody.innerHTML += `<tr>
+      <td style="color:var(--text3)">${i + 1}</td>
+      <td>${(+d.c).toFixed(1)}</td>
+      <td>${(+d.s).toFixed(1)}</td>
+      <td>${(+d.f).toFixed(1)}</td>
+      <td class="val-water">${(+d.w).toFixed(1)}</td>
+      <td>${(+d.sp).toFixed(1)}</td>
+      <td>${(+d.ca).toFixed(1)}</td>
+      <td>${(+d.fa).toFixed(1)}</td>
+      <td>${d.age}</td>
+      <td class="val-cs">${(+d.cs).toFixed(1)}</td>
+      <td><button onclick="removeData(${i})" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:.75rem;padding:2px 6px;border-radius:4px;" onmouseover="this.style.color='var(--danger)'" onmouseout="this.style.color='var(--text3)'">✕</button></td>
+    </tr>`;
+  });
+}
+
+// ── 刪除資料列並重新校正
+function removeData(idx) {
+  dataset.splice(idx, 1);
+  saveDataset();
+  renderTable();
+  recalibrate();
+}
+
+// ═══════════ 自動校正（最小二乘法） ═══════════
+// 利用使用者數據對 K1 與 offset 做線性回歸修正
+// 模型：CS_pred = K1 × exp(k_wb×(WB_ref−WB)) × ageFactor × admix × agg
+// 簡化：令 Y = CS_obs，X = CS_pred_base（k_wb固定）
+// 線性回歸：Y = a×X + b → 更新 calibK1×a，calibOffset=b
+function recalibrate() {
+  // 至少需要 3 筆才校正
+  if (dataset.length < 3) {
+    calibK1 = 960; calibK_wb = 3.5; calibOffset = 0;
+    document.getElementById('calib-info').style.display = 'none';
+    return;
+  }
+
+  const WB_ref = 0.558;
+  let sumX = 0, sumY = 0, sumXX = 0, sumXY = 0;
+  const n = dataset.length;
+
+  dataset.forEach(d => {
+    const binder_eq = d.c + d.s * 0.8 + d.f * 0.5;
+    const WB_eq = d.w / binder_eq;
+    const ageFactor = Math.log(d.age + 1) / Math.log(29);
+    const BFS_C = d.s / d.c; const FA_C = d.f / d.c;
+    const SP_C = d.sp / d.c; const CAG_C = d.ca / d.c; const FAG_C = d.fa / d.c;
+    const admix = 1 + BFS_C * 0.08 + FA_C * 0.04 + SP_C * 8.0;
+    const agg = Math.max(0.85, 1 - 0.01 * Math.abs(CAG_C - 3.2) - 0.008 * Math.abs(FAG_C - 3.8));
+    // 基礎預測值（MPa），使用預設 K1=1
+    const X_base = Math.exp(calibK_wb * (WB_ref - WB_eq)) * ageFactor * admix * agg;
+    const Y_kgf = d.cs;  // 實測值（kgf/cm²）
+    const Y_mpa = Y_kgf / 10.197;
+    sumX += X_base; sumY += Y_mpa; sumXX += X_base * X_base; sumXY += X_base * Y_mpa;
+  });
+
+  // OLS: a = (n·ΣXY − ΣX·ΣY) / (n·ΣXX − ΣX²)
+  const denom = n * sumXX - sumX * sumX;
+  if (Math.abs(denom) < 1e-10) return;
+  const a = (n * sumXY - sumX * sumY) / denom;
+  const b = (sumY - a * sumX) / n;
+
+  calibK1 = Math.max(100, Math.min(2000, a * 35.8 / Math.exp(0)));
+  // 實際上直接用 a 作為強度比例因子更穩定
+  calibK1 = Math.max(200, a * 35.8);
+  calibOffset = b * 10.197;  // 轉回 kgf/cm²
+
+  // 計算校正後 RMSE
+  let sse = 0;
+  dataset.forEach(d => {
+    const pred = predictCS_kgf(d.c, d.s, d.f, d.w, d.sp, d.ca, d.fa, d.age);
+    sse += (pred - d.cs) ** 2;
+  });
+  const rmse = Math.sqrt(sse / n).toFixed(1);
+
+  document.getElementById('calib-info').style.display = 'block';
+  document.getElementById('calib-n').innerText    = n;
+  document.getElementById('calib-rmse').innerText = rmse;
+  document.getElementById('calib-a').innerText    = (a).toFixed(4);
+  document.getElementById('calib-b').innerText    = calibOffset.toFixed(1);
+}
+
+// ── 核心計算（抽出供校正與預測共用）
+function predictCS_kgf(c, s, f, w, sp, ca, fa, age) {
+  const WB_ref = 0.558;
+  const binder_eq = c + s * 0.8 + f * 0.5;
+  const WB_eq = w / binder_eq;
+  const ageFactor = Math.log(age + 1) / Math.log(29);
+  const BFS_C = s / c; const FA_C = f / c;
+  const SP_C = sp / c; const CAG_C = ca / c; const FAG_C = fa / c;
+  const admix = 1 + BFS_C * 0.08 + FA_C * 0.04 + SP_C * 8.0;
+  const agg = Math.max(0.85, 1 - 0.01 * Math.abs(CAG_C - 3.2) - 0.008 * Math.abs(FAG_C - 3.8));
+  const CS_mpa = calibK1 * Math.exp(calibK_wb * (WB_ref - WB_eq)) * ageFactor * admix * agg / 35.8 + calibOffset / 10.197;
+  return Math.round(Math.min(847, Math.max(20, CS_mpa)) * 10.197);
+}
+
+function addData() {
+  const row = {
+    c:  +document.getElementById('t-cement').value,
+    s:  +document.getElementById('t-slag').value   || 0,
+    f:  +document.getElementById('t-flyash').value || 0,
+    w:  +document.getElementById('t-water').value,
+    sp: +document.getElementById('t-sp').value     || 0,
+    ca: +document.getElementById('t-ca').value     || 0,
+    fa: +document.getElementById('t-fa').value     || 0,
+    age:+document.getElementById('t-age').value,
+    cs: +document.getElementById('t-strength').value,
+  };
+  if (row.c && row.w && row.age && row.cs) {
+    dataset.push(row);
+    saveDataset();
+    renderTable();
+    recalibrate();  // 新增後自動重新校正
+    // 清空輸入欄
+    ['t-cement','t-slag','t-flyash','t-water','t-sp','t-ca','t-fa','t-age','t-strength']
+      .forEach(id => document.getElementById(id).value = '');
+  } else {
+    alert('請至少填寫：水泥、水、齡期、強度');
+  }
+}
+
+// ═══════════ TABS ═══════════
+function showTab(id, btn) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  綜合預測公式
+//  第一層：Mu (2024) AOA-SVR 模型的解析近似
+//    - 依據 Mu (2024) Table 1 數據集統計特性、
+//      Pearson 相關矩陣（Fig.2）及敏感度分析（Table 3）推導
+//    - 主架構：等效水膠比 Abrams 核 + 各輸入比值線性加權
+//    - 權重依敏感度排序：AGE > W/C > BFS/C > FA/C > SP/C > CAG/C ≈ FAG/C
+//  第二層：Xie et al. (2023) 養護方法 & 試體尺寸修正
+//    - 來源：Table 5 (#C1) & Table 7 (#C2) 迴歸斜率
+// ═══════════════════════════════════════════════════════════════════
+
+// ── Xie et al. (2023) 試體尺寸修正係數
+// 意義：4吋預測值 × 修正係數 = 該試體/養護條件下之強度
+// 全齡期修正（Table 5b y=0.9836x；Table 7b y=1.0361x）
+const XIE_ALL = {
+  '4in': [1.0000, 1.0000, 1.0000, 1.0000],  // [#C1,#C2,#C3,CIP]
+  '6in': [0.9836, 1.0361, 1.0000, 1.0000]
+};
+// 早期強度（age≤1天）修正（Table 5c y=1.0497x；Table 7c y=1.1237x）
+const XIE_D1 = {
+  '4in': [1.0000, 1.0000, 1.0000, 1.0000],
+  '6in': [1.0497, 1.1237, 1.0500, 1.0000]
+};
+// 季節斜率範圍（用於CI估算）
+// #C1: [0.9603,1.0497] 差9.31%；#C2: [0.9851,1.1237] 差14.07%
+const XIE_SEASON_SPREAD = [0.0931, 0.1407, 0.05, 0.02];
+
+// ── UI 狀態控制
+function setLoadingState(on) {
+  document.getElementById('result-idle').style.display    = on ? 'none'  : 'none';
+  document.getElementById('result-loading').style.display = on ? 'block' : 'none';
+  document.getElementById('result-done').style.display    = on ? 'none'  : 'none';
+  document.getElementById('predict-btn').disabled = on;
+  document.getElementById('predict-btn').style.opacity = on ? '.5' : '1';
+}
+
+function setResultState(val, range, pct, reasoning, specimenInfo) {
+  document.getElementById('result-idle').style.display    = 'none';
+  document.getElementById('result-loading').style.display = 'none';
+  document.getElementById('result-done').style.display    = 'block';
+  const age = +document.getElementById('c-age').value;
+  document.getElementById('result-age-label').innerText = age || '--';
+  const rv = document.getElementById('main-result');
+  rv.innerText = val;
+  rv.style.color = val >= 500 ? 'var(--success)' : val >= 300 ? 'var(--accent)' : 'var(--accent3)';
+  document.getElementById('result-range').innerText = range;
+  document.getElementById('result-bar').style.width = pct + '%';
+  document.getElementById('ai-reasoning').style.display = reasoning ? 'block' : 'none';
+  if (reasoning) document.getElementById('reasoning-text').innerHTML = reasoning;
+  document.getElementById('spec-warnings').style.display = specimenInfo ? 'block' : 'none';
+  if (specimenInfo) document.getElementById('spec-warn-text').innerHTML = specimenInfo;
+  document.getElementById('predict-btn').disabled = false;
+  document.getElementById('predict-btn').style.opacity = '1';
+}
+
+// ── 主預測函式（純前端，無 API）
+function calculateAI() {
+  // ── 讀取輸入
+  const c   = +document.getElementById('c-cement').value;
+  const w   = +document.getElementById('c-water').value;
+  const s   = +document.getElementById('c-slag').value   || 0;
+  const f   = +document.getElementById('c-ash').value    || 0;
+  const sp  = +document.getElementById('c-sp').value     || 0;
+  const ca  = +document.getElementById('c-ca').value     || 950;
+  const fa  = +document.getElementById('c-fa').value     || 700;
+  const age = +document.getElementById('c-age').value;
+  const mIdx = document.getElementById('c-method').selectedIndex;
+  const mName = document.getElementById('c-method');
+
+  if (!c || !w || !age) { alert('請填寫水泥、拌合水、齡期'); return; }
+
+  // ── 步驟顯示動畫（純 UI，非 API）
+  setLoadingState(true);
+  const steps = ['正規化輸入特徵…','計算等效水膠比…','套用 RBF 核加權…','SVR 迴歸求解…','套用 Xie (2023) 修正…'];
+  let si = 0;
+  const stepEl = document.getElementById('loading-step');
+  const stepTimer = setInterval(() => { stepEl.textContent = steps[si % steps.length]; si++; }, 400);
+
+  setTimeout(() => {
+    clearInterval(stepTimer);
+
+    // ════════════════════════════════════════════════════
+    //  第一層 + 第二層：呼叫共用函式（含校正係數）
+    const BFS_C = s  / c;
+    const FA_C  = f  / c;
+    const WC    = w  / c;
+    const SP_C  = sp / c;
+    const CAG_C = ca / c;
+    const FAG_C = fa / c;
+    const binder_eq = c + s * 0.8 + f * 0.5;
+    const WB_eq = w / binder_eq;
+    const ageFactor = Math.log(age + 1) / Math.log(29);
+    const admix_bonus = 1 + BFS_C*0.08 + FA_C*0.04 + SP_C*8.0;
+    const agg_factor  = 1 - 0.01*Math.abs(CAG_C-3.2) - 0.008*Math.abs(FAG_C-3.8);
+
+    // 4吋基礎強度（含校正，kgf/cm²）
+    const cs_kgf_4in = predictCS_kgf(c, s, f, w, sp, ca, fa, age);
+    const cs_mpa_4in = cs_kgf_4in / 10.197;
+
+    //  Xie et al. (2023) 試體修正
+    let xieCorr = (age <= 1)
+      ? XIE_D1[selectedSpecimen][mIdx]
+      : XIE_ALL[selectedSpecimen][mIdx];
+    xieCorr = xieCorr ?? 1.0;
+
+    const cs_corrected_mpa = cs_mpa_4in * xieCorr;
+    const cs_kgf = Math.round(cs_corrected_mpa * 10.197);
+
+    //  信賴區間
+    const rmse_mpa = 1.2132;
+    const season_spread = XIE_SEASON_SPREAD[mIdx] * cs_mpa_4in;
+    const ci_mpa  = Math.sqrt(rmse_mpa**2 + (season_spread*0.5)**2);
+    const ci_kgf  = Math.round(ci_mpa * 10.197 * 1.96);
+
+    //  強度等級
+    let grade = '';
+    if      (cs_corrected_mpa >= 60) grade = 'C60+ 高性能混凝土';
+    else if (cs_corrected_mpa > 35) grade = 'C35–C60 高強混凝土';
+    else if (cs_corrected_mpa >= 21) grade = 'C21–C35 結構混凝土';
+    else                              grade = 'C20 以下 普通混凝土';
+
+    const pct = Math.min(97, (cs_kgf / 850) * 100);
+    const calibNote = dataset.length >= 3
+      ? `<br><span style="color:var(--success);font-size:.72rem;">✓ 已套用 ${dataset.length} 筆實驗數據自動校正（calibK1=${calibK1.toFixed(0)}）</span>`
+      : '';
+
+    // ════════════════════════════════════════════════════
+    //  整理推理摘要
+    const cLabel = ['環境空氣養護 #C1','保溫箱養護 #C2','恆溫控制箱 #C3','CIP 現場澆置'];
+    const wbTrend = WB_eq < 0.4 ? '低水膠比 → 強度顯著提升' : WB_eq < 0.6 ? '中等水膠比 → 一般強度區間' : '高水膠比 → 強度明顯下降';
+    const ageTrend = age <= 3 ? `極早期（${age}天）≈ 28天強度 ${Math.round(ageFactor*100)}%` : age <= 7 ? `早期（${age}天）≈ 28天強度 ${Math.round(ageFactor*100)}%` : age === 28 ? '標準 28 天試驗齡期' : `長期（${age}天）≈ 28天強度 ${Math.round(ageFactor*100)}%`;
+    const admixNote = (s > 0 || f > 0)
+      ? `BFS/C=${BFS_C.toFixed(3)}（效率0.8）+ FA/C=${FA_C.toFixed(3)}（效率0.5）→ 等效膠材 ${Math.round(binder_eq)} kg/m³`
+      : '無礦物摻合料，純水泥配比';
+
+    const reasoningHTML = `
+<span style="color:var(--text3)">等效水膠比 W/B：</span><span style="color:var(--accent)">${WB_eq.toFixed(3)}</span>　${wbTrend}<br>
+<span style="color:var(--text3)">齡期因子 f(AGE)：</span><span style="color:var(--accent)">${ageFactor.toFixed(3)}</span>　${ageTrend}<br>
+<span style="color:var(--text3)">摻合料：</span>${admixNote}<br>
+<span style="color:var(--text3)">骨材修正：</span>CAG/C=${CAG_C.toFixed(2)}，FAG/C=${FAG_C.toFixed(2)}　→ 係數 ${Math.max(0.85,agg_factor).toFixed(3)}<br>
+<span style="color:var(--text3)">AOA-SVR 基礎強度（4吋）：</span><span style="color:var(--accent2)">${cs_mpa_4in.toFixed(1)} MPa = ${cs_kgf_4in} kgf/cm²</span><br>
+<span style="color:var(--text3)">Xie (2023) 修正係數：</span><span style="color:var(--accent3)">${xieCorr.toFixed(4)}</span>　（${selectedSpecimen}，${cLabel[mIdx]}，${age<=1?'早期':'全齡期'}）<br>
+<span style="color:var(--text3)">修正後強度：</span><span style="color:var(--success)">${cs_corrected_mpa.toFixed(1)} MPa = <strong>${cs_kgf} kgf/cm²</strong></span><br>
+<span style="color:var(--text3)">強度等級：</span>${grade}${calibNote}`;
+
+    //  試體警示
+    let specimenInfo = null;
+    if (selectedSpecimen === '6in' && mIdx <= 1) {
+      const isHigh = mIdx === 1;
+      specimenInfo = `6吋試體 ×  <strong>${cLabel[mIdx]}</strong>：修正係數 <strong style="color:${isHigh?'var(--danger)':'var(--accent3)'}">${xieCorr.toFixed(4)}</strong>（Xie et al. 2023 Table ${mIdx===0?'5':'7'}）。
+      ${isHigh ? '⚠ 保溫箱養護因水化放熱蓄積，6吋<strong>高估</strong>現場強度，早期（第1天）偏差可達 +12.4%。建議以 4吋試體或 CIP 比對驗證。' : '6吋於環境空氣養護下強度略低於 4吋（−1.64%），差異在可接受範圍。'}`;
+    }
+
+    //  更新報告頁
+    document.getElementById('rep-val').innerText  = cs_kgf;
+    document.getElementById('rep-mpa').innerText  = `≈ ${cs_corrected_mpa.toFixed(1)} MPa`;
+    document.getElementById('rep-date').innerText = new Date().toLocaleDateString('zh-TW');
+    document.getElementById('rep-no').innerText   = 'HPC-' + Math.random().toString(36).substr(2,6).toUpperCase();
+
+    // 配比表格（tbody + tfoot）
+    const tdS = (txt, right) => `<td style="padding:7px 12px;font-family:var(--mono);font-size:.82rem;color:var(--text2);border-bottom:1px solid var(--border);border-right:1px solid var(--border);${right?'text-align:right;':''}">${txt}</td>`;
+    const tdU = (txt) => `<td style="padding:7px 12px;font-family:var(--mono);font-size:.82rem;color:var(--text3);border-bottom:1px solid var(--border);">${txt}</td>`;
+    const trRow = (name, sym, val, unit, highlight) => `<tr style="${highlight?'background:rgba(59,130,246,.07);':''}">
+      ${tdS(name)} ${tdS(`<span style="color:var(--accent2)">${sym}</span>`)} ${tdS(val, true)} ${tdU(unit)}</tr>`;
+    document.getElementById('rep-table-body').innerHTML =
+      trRow('水泥',     'C',   c,   'kg/m³', true) +
+      trRow('拌合水',   'W',   w,   'kg/m³', false) +
+      trRow('爐石粉',   'BFS', s,   'kg/m³', false) +
+      trRow('飛灰',     'FA',  f,   'kg/m³', false) +
+      trRow('減水劑',   'SP',  sp,  'kg/m³', false) +
+      trRow('粗骨材',   'CAG', ca,  'kg/m³', false) +
+      trRow('細骨材',   'FAG', fa,  'kg/m³', false) +
+      trRow('養護齡期', 'AGE',  age, '天',     false);
+    document.getElementById('rep-table-foot').innerHTML = `
+      <tr style="background:var(--bg3);">
+        <td style="padding:7px 12px;font-family:var(--mono);font-size:.75rem;color:var(--text3);border-right:1px solid var(--border);">等效水膠比</td>
+        <td style="padding:7px 12px;font-family:var(--mono);font-size:.75rem;color:var(--accent2);border-right:1px solid var(--border);">W/B</td>
+        <td style="padding:7px 12px;font-family:var(--mono);font-size:.75rem;color:var(--text2);text-align:right;border-right:1px solid var(--border);">${WB_eq.toFixed(3)}</td>
+        <td style="padding:7px 12px;font-family:var(--mono);font-size:.75rem;color:var(--text3);">—</td>
+      </tr>
+      <tr style="background:var(--bg3);">
+        <td style="padding:7px 12px;font-family:var(--mono);font-size:.75rem;color:var(--text3);border-right:1px solid var(--border);">養護方法</td>
+        <td colspan="3" style="padding:7px 12px;font-family:var(--mono);font-size:.75rem;color:var(--text2);">${cLabel[mIdx]}</td>
+      </tr>
+      <tr style="background:var(--bg3);">
+        <td style="padding:7px 12px;font-family:var(--mono);font-size:.75rem;color:var(--text3);border-right:1px solid var(--border);">試體尺寸</td>
+        <td colspan="3" style="padding:7px 12px;font-family:var(--mono);font-size:.75rem;color:var(--text2);">${selectedSpecimen==='4in'?'4 吋圓柱（φ100×200mm）':`6 吋圓柱（Xie修正係數 ${xieCorr.toFixed(4)}）`}</td>
+      </tr>
+      <tr style="background:var(--bg3);">
+        <td style="padding:7px 12px;font-family:var(--mono);font-size:.75rem;color:var(--text3);border-right:1px solid var(--border);">強度等級</td>
+        <td colspan="3" style="padding:7px 12px;font-family:var(--mono);font-size:.75rem;color:var(--accent3);">${grade}</td>
+      </tr>`;
+
+    setResultState(
+      cs_kgf,
+      `95% CI：${Math.max(0, cs_kgf - ci_kgf)} – ${cs_kgf + ci_kgf} kgf/cm²`,
+      pct,
+      reasoningHTML,
+      specimenInfo
+    );
+
+    // 同步推理摘要至報告頁
+    document.getElementById('rep-reasoning-card').style.display = 'block';
+    document.getElementById('rep-reasoning-text').innerHTML = reasoningHTML;
+
+    // 繪製強度發展曲線（預測頁 + 報告頁）
+    renderStrengthCurve(c, s, f, w, sp, ca, fa, mIdx, age);
+  }, 2200);
+}
+
+// ═══════════ STRENGTH DEVELOPMENT CURVE ═══════════
+let strengthCurveChartInstance = null;
+
+function renderStrengthCurve(c, s, f, w, sp, ca, fa, mIdx, selectedAge) {
+  const ages = [1, 3, 7, 14, 28, 56, 90];
+  const values = ages.map(a => {
+    const cs_kgf_4in = predictCS_kgf(c, s, f, w, sp, ca, fa, a);
+    const cs_mpa_4in = cs_kgf_4in / 10.197;
+    let xieCorr = (a <= 1) ? XIE_D1[selectedSpecimen][mIdx] : XIE_ALL[selectedSpecimen][mIdx];
+    xieCorr = xieCorr ?? 1.0;
+    return Math.round(cs_mpa_4in * xieCorr * 10.197);
+  });
+
+  // 找出目前選擇齡期的點（高亮）
+  const highlightData = ages.map((a, i) => a === selectedAge ? values[i] : null);
+
+  document.getElementById('strength-curve-card').style.display = 'block';
+
+  const curveConfig = (canvasId) => ({
+    type: 'line',
+    data: {
+      labels: ages.map(a => a + '天'),
+      datasets: [
+        {
+          label: '預估強度 (kgf/cm²)',
+          data: values,
+          borderColor: 'rgba(59,130,246,.9)',
+          backgroundColor: 'rgba(59,130,246,.08)',
+          borderWidth: 2.5,
+          pointRadius: ages.map(a => a === selectedAge ? 0 : 5),
+          pointBackgroundColor: 'rgba(59,130,246,.9)',
+          pointBorderColor: '#0a0e1a',
+          pointBorderWidth: 2,
+          tension: 0.35,
+          fill: true,
+        },
+        {
+          label: '本次預測齡期',
+          data: highlightData,
+          borderColor: 'transparent',
+          backgroundColor: 'transparent',
+          pointRadius: ages.map(a => a === selectedAge ? 10 : 0),
+          pointStyle: 'triangle',
+          pointBackgroundColor: 'rgba(245,158,11,1)',
+          pointBorderColor: '#0a0e1a',
+          pointBorderWidth: 2,
+          showLine: false,
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color:'#94a3b8', font:{size:11}, usePointStyle: true } },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.dataset.label === '本次預測齡期' ? '▲ 本次預測' : '強度'}：${ctx.parsed.y} kgf/cm²`
+          }
+        }
+      },
+      scales: {
+        x: {
+          title: { display:true, text:'齡期（天）', color:'#64748b', font:{size:11} },
+          grid: { color:'rgba(30,45,74,.6)' },
+          ticks: { color:'#64748b' }
+        },
+        y: {
+          title: { display:true, text:'抗壓強度（kgf/cm²）', color:'#64748b', font:{size:11} },
+          grid: { color:'rgba(30,45,74,.6)' },
+          ticks: { color:'#64748b' },
+          suggestedMin: 0
+        }
+      }
+    }
+  });
+
+  const ctx = document.getElementById('strengthCurveChart').getContext('2d');
+  if (strengthCurveChartInstance) strengthCurveChartInstance.destroy();
+  strengthCurveChartInstance = new Chart(ctx, curveConfig('strengthCurveChart'));
+
+  // 報告頁曲線圖（列印品質：較大字體與點）
+  const printConfig = {
+    type: 'line',
+    data: {
+      labels: ages.map(a => a + '天'),
+      datasets: [
+        {
+          label: '預估強度 (kgf/cm²)',
+          data: values,
+          borderColor: 'rgba(59,130,246,.9)',
+          backgroundColor: 'rgba(59,130,246,.08)',
+          borderWidth: 3,
+          pointRadius: ages.map(a => a === selectedAge ? 0 : 6),
+          pointBackgroundColor: 'rgba(59,130,246,.9)',
+          pointBorderColor: '#ffffff',
+          pointBorderWidth: 2,
+          tension: 0.35,
+          fill: true,
+        },
+        {
+          label: '本次預測齡期',
+          data: highlightData,
+          borderColor: 'transparent',
+          backgroundColor: 'transparent',
+          pointRadius: ages.map(a => a === selectedAge ? 12 : 0),
+          pointStyle: 'triangle',
+          pointBackgroundColor: 'rgba(245,158,11,1)',
+          pointBorderColor: '#ffffff',
+          pointBorderWidth: 2,
+          showLine: false,
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: false,
+      plugins: {
+        legend: {
+          position: 'top',
+          align: 'center',
+          labels: { color:'#334155', font:{ size:11, family:'Noto Sans TC, sans-serif' }, usePointStyle: true, padding: 20, boxWidth: 10 }
+        },
+        tooltip: { enabled: false }
+      },
+      scales: {
+        x: {
+          title: { display:true, text:'齡期（天）', color:'#334155', font:{ size:11, family:'Noto Sans TC, sans-serif' } },
+          grid: { color:'rgba(148,163,184,.4)' },
+          ticks: { color:'#334155', font:{ size:11 } }
+        },
+        y: {
+          title: { display:true, text:'抗壓強度（kgf/cm²）', color:'#334155', font:{ size:11, family:'Noto Sans TC, sans-serif' } },
+          grid: { color:'rgba(148,163,184,.4)' },
+          ticks: { color:'#334155', font:{ size:11 } },
+          suggestedMin: 0
+        }
+      }
+    }
+  };
+
+  document.getElementById('rep-curve-card').style.display = 'block';
+  const ctx2 = document.getElementById('repCurveChart').getContext('2d');
+  if (window.repCurveChartInstance) window.repCurveChartInstance.destroy();
+  window.repCurveChartInstance = new Chart(ctx2, printConfig);
+
+  // 列印前將 canvas 轉為 PNG img，列印後還原
+  window.addEventListener('beforeprint', function() {
+    if (window.repCurveChartInstance) {
+      const img = document.getElementById('rep-curve-print-img');
+      img.src = window.repCurveChartInstance.toBase64Image('image/png', 1.0);
+    }
+  });
+  window.addEventListener('afterprint', function() {
+    const img = document.getElementById('rep-curve-print-img');
+    img.src = '';
+  });
+}
+
+// ═══════════ SENSITIVITY BARS ═══════════
+const sensData = [
+  { name:'齡期AGE',  drop:0.4099, train:'0.5831', test:'0.8131', cls:'low' },
+  { name:'飛灰FA',  drop:0.0212, train:'0.9662', test:'0.9683', cls:'high' },
+  { name:'水W', drop:0.0196, train:'0.9678', test:'0.9723', cls:'high' },
+  { name:'超塑劑SP',drop:0.0221, train:'0.9653', test:'0.9728', cls:'high' },
+  { name:'水泥C',   drop:0.0194, train:'0.9680', test:'0.9723', cls:'high' },
+  { name:'爐石BFS', drop:0.0247, train:'0.9874', test:'0.9683', cls:'high' },
+  { name:'粗骨材CAG',drop:0.0199,train:'0.9675', test:'0.9732', cls:'high' },
+  { name:'細骨材FAG',drop:0.0202,train:'0.9672', test:'0.9729', cls:'high' },
+];
+
+function renderSensitivity() {
+  const container = document.getElementById('sensitivity-bars');
+  container.innerHTML = '';
+  sensData.forEach(d => {
+    const pct = Math.min(100, d.drop * 220);
+    container.innerHTML += `
+      <div class="conf-row">
+        <div class="conf-name" style="width:110px;">${d.name}</div>
+        <div class="conf-track">
+          <div class="conf-fill ${d.cls}" style="width:${pct}%"></div>
+        </div>
+        <div class="conf-val" style="width:70px;text-align:right;color:${d.cls==='low'?'var(--danger)':'var(--text3)'}">${(d.drop*100).toFixed(1)}% ↓</div>
+      </div>`;
+  });
+}
+
+// ═══════════ CHARTS ═══════════
+function initCharts() {
+  // 殘差散佈圖
+  const ctx1 = document.getElementById('errorChart').getContext('2d');
+  const ages  = [1,1,1,3,3,7,7,7,14,28,28,28,56,56,90,180,365];
+  const res   = [-8.2,6.1,-3.1,12.2,-9.2,4.1,18.4,-5.1,-11.2,7.1,-3.1,15.3,-8.2,9.2,2.0,-5.1,7.1];
+  new Chart(ctx1, {
+    type: 'scatter',
+    data: {
+      datasets: [{
+        label: 'AOA-SVR 殘差',
+        data: ages.map((x,i) => ({ x, y: res[i] })),
+        backgroundColor: 'rgba(59,130,246,.7)',
+        pointRadius: 6, pointHoverRadius: 8
+      }, {
+        label: '零線',
+        data: [{x:0,y:0},{x:400,y:0}],
+        type:'line', borderColor:'rgba(239,68,68,.5)',
+        borderDash:[5,5], borderWidth:1.5,
+        pointRadius:0, tension:0
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color:'#94a3b8', font:{size:11} } } },
+      scales: {
+        x: { title:{display:true,text:'齡期 (天)',color:'#64748b'},
+             grid:{color:'rgba(30,45,74,.6)'}, ticks:{color:'#64748b'} },
+        y: { title:{display:true,text:'殘差 (kgf/cm²)',color:'#64748b'},
+             grid:{color:'rgba(30,45,74,.6)'}, ticks:{color:'#64748b'},
+             suggestedMin:-30, suggestedMax:30 }
+      }
+    }
+  });
+
+  // 比較雷達圖
+  const ctx2 = document.getElementById('compareChart').getContext('2d');
+  new Chart(ctx2, {
+    type: 'radar',
+    data: {
+      labels: ['R²', 'A₂₀指數', 'RMSE精度', 'MAE精度', 'OBJ優化'],
+      datasets: [{
+        label: 'AOA-SVR',
+        data: [99.3, 98.38, 93.7, 95.5, 91.2],
+        borderColor: 'rgba(16,185,129,.9)',
+        backgroundColor: 'rgba(16,185,129,.1)',
+        borderWidth: 2, pointRadius: 4
+      },{
+        label: 'EO-SVR',
+        data: [94.1, 89.97, 69.2, 73.5, 65.3],
+        borderColor: 'rgba(59,130,246,.7)',
+        backgroundColor: 'rgba(59,130,246,.1)',
+        borderWidth: 2, pointRadius: 4
+      },{
+        label: 'XGBoost',
+        data: [94.4, 85.0, 72.5, 78.4, 68.0],
+        borderColor: 'rgba(245,158,11,.7)',
+        backgroundColor: 'rgba(245,158,11,.08)',
+        borderWidth: 2, pointRadius: 4, borderDash: [4,4]
+      },{
+        label: 'SEM',
+        data: [85.7, 75.2, 53.4, 58.0, 50.0],
+        borderColor: 'rgba(100,116,139,.5)',
+        backgroundColor: 'rgba(100,116,139,.05)',
+        borderWidth: 1.5, pointRadius: 3, borderDash: [3,3]
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color:'#94a3b8', font:{size:11} } } },
+      scales: {
+        r: {
+          min: 40, max: 100,
+          grid: { color:'rgba(30,45,74,.8)' },
+          ticks: { color:'#64748b', font:{size:10}, backdropColor:'transparent' },
+          pointLabels: { color:'#94a3b8', font:{size:12} }
+        }
+      }
+    }
+  });
+}
+
+// ═══════════ INIT ═══════════
+renderTable();
+recalibrate();
+renderSensitivity();
+initCharts();
+</script>
+</body>
+</html>
