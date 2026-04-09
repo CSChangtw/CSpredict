@@ -1,5 +1,5 @@
-// Service Worker — 混凝土強度預測系統 AOA-SVR v2.0
-const CACHE_NAME = 'concrete-aoa-svr-v2';
+// Service Worker — 混凝土強度預測系統v2.0
+const CACHE_NAME = 'Conpress Strength Prediction v2';
 const ASSETS = [
   '/index.html',
   '/manifest.json',
