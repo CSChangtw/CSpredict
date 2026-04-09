@@ -1,7 +1,7 @@
 {
   "name": "混凝土抗壓強度 AI 預測系統",
   "short_name": "強度預測",
-  "description": "AOA-SVR 混凝土抗壓強度智慧預測系統，基於 Mu(2024) HPC 數據集與 Xie et al.(2023) 養護修正研究。",
+  "description": "AOA-SVR 混凝土抗壓強度智慧預測系統，支援配比輸入、多齡期預測與報告生成",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0a0e1a",
@@ -10,21 +10,25 @@
   "lang": "zh-TW",
   "categories": ["productivity", "utilities", "education"],
   "icons": [
-    { "src": "icon-72x72.png",   "sizes": "72x72",   "type": "image/png", "purpose": "any maskable" },
-    { "src": "icon-96x96.png",   "sizes": "96x96",   "type": "image/png", "purpose": "any maskable" },
-    { "src": "icon-128x128.png", "sizes": "128x128", "type": "image/png", "purpose": "any maskable" },
-    { "src": "icon-144x144.png", "sizes": "144x144", "type": "image/png", "purpose": "any maskable" },
-    { "src": "icon-152x152.png", "sizes": "152x152", "type": "image/png", "purpose": "any maskable" },
-    { "src": "icon-192x192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "icon-384x384.png", "sizes": "384x384", "type": "image/png", "purpose": "any maskable" },
-    { "src": "icon-512x512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "icon-72x72.png",   "sizes": "72x72",   "type": "image/png" },
+    { "src": "icon-96x96.png",   "sizes": "96x96",   "type": "image/png" },
+    { "src": "icon-128x128.png", "sizes": "128x128", "type": "image/png" },
+    { "src": "icon-144x144.png", "sizes": "144x144", "type": "image/png" },
+    { "src": "icon-152x152.png", "sizes": "152x152", "type": "image/png" },
+    { "src": "icon-192x192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-256x256.png", "sizes": "256x256", "type": "image/png" },
+    { "src": "icon-384x384.png", "sizes": "384x384", "type": "image/png" },
+    { "src": "icon-512x512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512x512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
-  "screenshots": [
+  "screenshots": [],
+  "shortcuts": [
     {
-      "src": "icon-512x512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "form_factor": "wide"
+      "name": "強度預測",
+      "short_name": "預測",
+      "description": "直接進入強度預測頁面",
+      "url": "./index.html#predict",
+      "icons": [{ "src": "icon-96x96.png", "sizes": "96x96" }]
     }
   ]
 }

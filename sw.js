@@ -1,77 +1,112 @@
-// Service Worker for 混凝土抗壓強度 AI 預測系統
-// Cache version — bump to invalidate cache
-const CACHE_NAME = 'concrete-aoa-svr-v2';
+// Service Worker for 混凝土抗壓強度 AI 預測系統 PWA
+const CACHE_NAME = 'concrete-strength-v2.1';
+const STATIC_CACHE = 'concrete-static-v2.1';
 
-// Assets to cache on install
+// Assets to cache for offline use
 const PRECACHE_ASSETS = [
+  './',
   './index.html',
   './manifest.json',
-  './icon-72x72.png',
-  './icon-96x96.png',
-  './icon-128x128.png',
-  './icon-144x144.png',
-  './icon-152x152.png',
   './icon-192x192.png',
-  './icon-384x384.png',
   './icon-512x512.png',
-  './apple-touch-icon.png',
-  './favicon.ico',
-  // External CDN (chart.js & fonts cached on first load)
-  'https://cdn.jsdelivr.net/npm/chart.js',
+  // External CDN resources (will be cached on first fetch)
 ];
 
-// ── INSTALL ──────────────────────────────────────────────────────────────────
+// Install event - precache core assets
 self.addEventListener('install', event => {
-  self.skipWaiting();
+  console.log('[SW] Installing...');
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => {
-      // Cache local assets; ignore CDN failures gracefully
-      return Promise.allSettled(
-        PRECACHE_ASSETS.map(url =>
-          cache.add(url).catch(err => console.warn('[SW] Precache miss:', url, err))
-        )
-      );
-    })
+      console.log('[SW] Pre-caching assets');
+      return cache.addAll(PRECACHE_ASSETS);
+    }).then(() => self.skipWaiting())
   );
 });
 
-// ── ACTIVATE ─────────────────────────────────────────────────────────────────
+// Activate event - clean up old caches
 self.addEventListener('activate', event => {
+  console.log('[SW] Activating...');
   event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(
-        keys
-          .filter(key => key !== CACHE_NAME)
-          .map(key => caches.delete(key))
-      )
-    ).then(() => self.clients.claim())
+    caches.keys().then(cacheNames => {
+      return Promise.all(
+        cacheNames
+          .filter(name => name !== CACHE_NAME && name !== STATIC_CACHE)
+          .map(name => {
+            console.log('[SW] Deleting old cache:', name);
+            return caches.delete(name);
+          })
+      );
+    }).then(() => self.clients.claim())
   );
 });
 
-// ── FETCH — Cache-First with Network Fallback ─────────────────────────────────
+// Fetch event - Cache First for static assets, Network First for others
 self.addEventListener('fetch', event => {
-  // Only intercept GET requests
+  const url = new URL(event.request.url);
+
+  // Skip non-GET requests
   if (event.request.method !== 'GET') return;
 
+  // Skip chrome-extension and non-http requests
+  if (!url.protocol.startsWith('http')) return;
+
+  // Strategy: Stale-While-Revalidate for CDN resources
+  if (url.hostname.includes('cdn.jsdelivr.net') ||
+      url.hostname.includes('fonts.googleapis.com') ||
+      url.hostname.includes('fonts.gstatic.com')) {
+    event.respondWith(
+      caches.open(STATIC_CACHE).then(cache => {
+        return cache.match(event.request).then(cached => {
+          const fetchPromise = fetch(event.request).then(response => {
+            if (response.ok) {
+              cache.put(event.request, response.clone());
+            }
+            return response;
+          }).catch(() => cached);
+          return cached || fetchPromise;
+        });
+      })
+    );
+    return;
+  }
+
+  // Strategy: Cache First for local assets
   event.respondWith(
     caches.match(event.request).then(cached => {
       if (cached) return cached;
-
-      return fetch(event.request)
-        .then(response => {
-          // Cache successful responses for CDN resources
-          if (response && response.status === 200) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
-          }
-          return response;
-        })
-        .catch(() => {
-          // Offline fallback: return index.html for navigation requests
-          if (event.request.mode === 'navigate') {
-            return caches.match('./index.html');
-          }
-        });
+      return fetch(event.request).then(response => {
+        if (response.ok) {
+          const responseClone = response.clone();
+          caches.open(CACHE_NAME).then(cache => {
+            cache.put(event.request, responseClone);
+          });
+        }
+        return response;
+      }).catch(() => {
+        // Offline fallback
+        if (event.request.mode === 'navigate') {
+          return caches.match('./index.html');
+        }
+      });
     })
+  );
+});
+
+// Background sync for offline actions
+self.addEventListener('sync', event => {
+  console.log('[SW] Background sync:', event.tag);
+});
+
+// Push notifications (if needed in future)
+self.addEventListener('push', event => {
+  const options = {
+    body: event.data ? event.data.text() : '強度預測系統更新通知',
+    icon: './icon-192x192.png',
+    badge: './icon-72x72.png',
+    vibrate: [100, 50, 100],
+    data: { dateOfArrival: Date.now() }
+  };
+  event.waitUntil(
+    self.registration.showNotification('混凝土強度預測系統', options)
   );
 });
