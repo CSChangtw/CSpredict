@@ -1,5 +1,5 @@
 {
-  "name": "混凝土強度預測系統 AOA-SVR v2.0",
+  "name": "混凝土強度預測系統v2.0",
   "short_name": "強度預測",
   "description": "高性能混凝土抗壓強度 AI 預測系統，基於 AOA-SVR 模型與 Mu (2024) 數據集",
   "start_url": "/index.html",
