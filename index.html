@@ -3,25 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>混凝土抗壓強度 AI 預測系統</title>
-<!-- ── PWA ── -->
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#3b82f6">
-<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="強度預測">
-<meta name="application-name" content="混凝土強度預測">
-<meta name="msapplication-TileColor" content="#0a0e1a">
-<meta name="msapplication-TileImage" content="icon-144x144.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="32x32" href="icon-32x32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="icon-16x16.png">
 <link rel="shortcut icon" href="favicon.ico">
-<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
-<link rel="apple-touch-icon" sizes="152x152" href="icon-152x152.png">
-<link rel="apple-touch-icon" sizes="144x144" href="icon-144x144.png">
-<link rel="apple-touch-icon" sizes="128x128" href="icon-128x128.png">
-<link rel="apple-touch-icon" sizes="96x96" href="icon-96x96.png">
+<title>混凝土抗壓強度 AI 預測系統</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600;700&family=JetBrains+Mono:wght@400;700&family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
@@ -1698,18 +1689,12 @@ recalibrate();
 renderSensitivity();
 initCharts();
 </script>
-
-<!-- ── SERVICE WORKER REGISTRATION ── -->
 <script>
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', function() {
-    navigator.serviceWorker.register('./sw.js')
-      .then(function(registration) {
-        console.log('[PWA] Service Worker registered:', registration.scope);
-      })
-      .catch(function(err) {
-        console.log('[PWA] Service Worker registration failed:', err);
-      });
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(reg => console.log('SW registered:', reg.scope))
+      .catch(err => console.log('SW error:', err));
   });
 }
 </script>
