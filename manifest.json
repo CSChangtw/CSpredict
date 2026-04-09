@@ -1,14 +1,14 @@
 {
-  "name": "混凝土強度預測系統v2.0",
+  "name": "混凝土強度預測系統 v2.0",
   "short_name": "強度預測",
   "description": "高性能混凝土抗壓強度 AI 預測系統，基於 AOA-SVR 模型與 Mu (2024) 數據集",
-  "start_url": "/index.html",
+  "start_url": "/CSpredict/index.html",
+  "scope": "/CSpredict/",
   "display": "standalone",
   "background_color": "#0a0e1a",
   "theme_color": "#3b82f6",
   "orientation": "any",
   "lang": "zh-TW",
-  "scope": "/",
   "categories": ["productivity", "utilities"],
   "icons": [
     { "src": "icon-16x16.png",           "sizes": "16x16",     "type": "image/png" },
@@ -31,8 +31,7 @@
     {
       "name": "強度預測",
       "short_name": "預測",
-      "description": "直接開啟強度預測頁面",
-      "url": "/index.html",
+      "url": "/CSpredict/index.html",
       "icons": [{ "src": "icon-96x96.png", "sizes": "96x96" }]
     }
   ]
